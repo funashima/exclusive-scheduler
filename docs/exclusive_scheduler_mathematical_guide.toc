@@ -1,0 +1,65 @@
+\contentsline {section}{\numberline {1}問題の全体像}{4}{section.1}%
+\contentsline {subsection}{\numberline {1.1}何を解くプログラムか}{4}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}処理の層と責任範囲}{4}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}GUIと計算核を分離する意義}{4}{subsection.1.3}%
+\contentsline {section}{\numberline {2}入力データの数学的表現}{5}{section.2}%
+\contentsline {subsection}{\numberline {2.1}集合と添字}{5}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}希望順位行列}{5}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}配列の整合性}{6}{subsection.2.3}%
+\contentsline {section}{\numberline {3}割当問題の厳密な定式化}{6}{section.3}%
+\contentsline {subsection}{\numberline {3.1}二値変数}{6}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}一人一枠制約}{6}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}共有資源の重複禁止}{6}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}割当を評価する四次元ベクトル}{7}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}辞書式順序（lexicographic order）の意味}{7}{subsection.3.5}%
+\contentsline {subsection}{\numberline {3.6}重み付き和との違い}{8}{subsection.3.6}%
+\contentsline {section}{\numberline {4}区間スケジューリングと動的計画法}{8}{section.4}%
+\contentsline {subsection}{\numberline {4.1}なぜ単純な貪欲法では不足するのか}{8}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}終了時刻順へのソート}{8}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}直前の両立可能位置}{8}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}参加者集合をビットマスクで表す}{9}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}DP状態の厳密な意味}{10}{subsection.4.5}%
+\contentsline {subsection}{\numberline {4.6}区間一件を採用するときの増分}{10}{subsection.4.6}%
+\contentsline {subsection}{\numberline {4.7}DPの基本漸化式}{10}{subsection.4.7}%
+\contentsline {subsection}{\numberline {4.8}正方向の更新として見る}{11}{subsection.4.8}%
+\contentsline {section}{\numberline {5}Python実装と数学記号の対応}{11}{section.5}%
+\contentsline {subsection}{\numberline {5.1}前処理と入力検査}{11}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}DPテーブルの初期化}{11}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}$p(j)$ に対応する探索}{12}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}状態遷移と辞書式比較}{12}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}最終解と復元}{12}{subsection.5.5}%
+\contentsline {section}{\numberline {6}実際に手で追う計算例}{13}{section.6}%
+\contentsline {subsection}{\numberline {6.1}入力例と両立位置}{13}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}第1段階：枠1まで}{13}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}第2段階：枠2まで}{14}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}第3段階：枠3まで}{14}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}第4段階：枠4まで}{14}{subsection.6.5}%
+\contentsline {subsection}{\numberline {6.6}最終段階：枠5まで}{15}{subsection.6.6}%
+\contentsline {subsection}{\numberline {6.7}重要な教訓：局所的に最善とは限らない}{15}{subsection.6.7}%
+\contentsline {section}{\numberline {7}厳密最適性の証明}{15}{section.7}%
+\contentsline {subsection}{\numberline {7.1}準備：延長可能性を決める情報}{15}{subsection.7.1}%
+\contentsline {section}{\numberline {8}計算量とスケーラビリティ}{16}{section.8}%
+\contentsline {subsection}{\numberline {8.1}状態数}{16}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}時間計算量}{16}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}人数15人という制限の意味}{17}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}同じ厳密性を保った改善案}{17}{subsection.8.4}%
+\contentsline {section}{\numberline {9}画面処理・ファイル処理の読み方}{17}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Qtのイベント駆動}{17}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}枠の一括生成}{18}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}希望の可視化と実際の割当は別物}{18}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}JSON保存と復元}{18}{subsection.9.4}%
+\contentsline {section}{\numberline {10}入力検証・限界・モデル拡張}{18}{section.10}%
+\contentsline {subsection}{\numberline {10.1}現在の実装が明示的に保証すること}{18}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}現在の実装が保証しないこと}{19}{subsection.10.2}%
+\contentsline {subsection}{\numberline {10.3}入力検査に関する実装上の注意}{19}{subsection.10.3}%
+\contentsline {subsection}{\numberline {10.4}公平性・必須対象者・時間的余裕の導入（拡張案）}{19}{subsection.10.4}%
+\contentsline {paragraph}{必須参加者}{19}{section*.6}%
+\contentsline {paragraph}{準備時間}{19}{section*.7}%
+\contentsline {paragraph}{希望順位の個人差}{20}{section*.8}%
+\contentsline {paragraph}{複数資源}{20}{section*.9}%
+\contentsline {section}{\numberline {11}検証方法：厳密解の独立確認}{20}{section.11}%
+\contentsline {subsection}{\numberline {11.1}小規模な全列挙との照合}{20}{subsection.11.1}%
+\contentsline {subsection}{\numberline {11.2}最低限確認したい境界事例}{20}{subsection.11.2}%
+\contentsline {section}{\numberline {12}より一般的な視点とまとめ}{20}{section.12}%
+\contentsline {section}{\numberline {付録A}記号一覧}{21}{appendix.A}%
+\contentsline {section}{\numberline {付録B}読解する際のソースコード位置}{22}{appendix.B}%

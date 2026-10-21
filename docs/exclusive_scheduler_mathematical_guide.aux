@@ -1,0 +1,94 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}問題の全体像}{4}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}何を解くプログラムか}{4}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}処理の層と責任範囲}{4}{subsection.1.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces 実装の主要構成}}{4}{table.caption.2}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:modules}{{1}{4}{実装の主要構成}{table.caption.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}GUIと計算核を分離する意義}{4}{subsection.1.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}入力データの数学的表現}{5}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}集合と添字}{5}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}希望順位行列}{5}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}配列の整合性}{6}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}割当問題の厳密な定式化}{6}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}二値変数}{6}{subsection.3.1}\protected@file@percent }
+\newlabel{eq:unrequested}{{1}{6}{二値変数}{equation.3.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}一人一枠制約}{6}{subsection.3.2}\protected@file@percent }
+\newlabel{eq:person}{{2}{6}{一人一枠制約}{equation.3.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}共有資源の重複禁止}{6}{subsection.3.3}\protected@file@percent }
+\newlabel{eq:resource}{{3}{6}{共有資源の重複禁止}{equation.3.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}割当を評価する四次元ベクトル}{7}{subsection.3.4}\protected@file@percent }
+\newlabel{eq:lexobj}{{7}{7}{割当を評価する四次元ベクトル}{equation.3.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}辞書式順序（lexicographic order）の意味}{7}{subsection.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}重み付き和との違い}{8}{subsection.3.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}区間スケジューリングと動的計画法}{8}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}なぜ単純な貪欲法では不足するのか}{8}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}終了時刻順へのソート}{8}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}直前の両立可能位置}{8}{subsection.4.3}\protected@file@percent }
+\newlabel{eq:pred}{{8}{8}{直前の両立可能位置}{equation.4.8}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces 終了時刻順の区間と $p(j)$：隣接区間は同時採用可能}}{9}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:intervals}{{1}{9}{終了時刻順の区間と $p(j)$：隣接区間は同時採用可能}{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}参加者集合をビットマスクで表す}{9}{subsection.4.4}\protected@file@percent }
+\newlabel{eq:mask}{{9}{9}{参加者集合をビットマスクで表す}{equation.4.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces ビットマスクと割当済み集合}}{9}{table.caption.4}\protected@file@percent }
+\newlabel{tab:masks}{{2}{9}{ビットマスクと割当済み集合}{table.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}DP状態の厳密な意味}{10}{subsection.4.5}\protected@file@percent }
+\newlabel{eq:initial}{{10}{10}{DP状態の厳密な意味}{equation.4.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}区間一件を採用するときの増分}{10}{subsection.4.6}\protected@file@percent }
+\newlabel{eq:delta}{{11}{10}{区間一件を採用するときの増分}{equation.4.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}DPの基本漸化式}{10}{subsection.4.7}\protected@file@percent }
+\newlabel{eq:recurrence}{{12}{10}{DPの基本漸化式}{equation.4.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.8}正方向の更新として見る}{11}{subsection.4.8}\protected@file@percent }
+\newlabel{eq:forward}{{13}{11}{正方向の更新として見る}{equation.4.13}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Python実装と数学記号の対応}{11}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}前処理と入力検査}{11}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}DPテーブルの初期化}{11}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}$p(j)$ に対応する探索}{12}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}状態遷移と辞書式比較}{12}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}最終解と復元}{12}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}実際に手で追う計算例}{13}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}入力例と両立位置}{13}{subsection.6.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces 具体例：希望行列、開始順位、両立可能位置}}{13}{table.caption.5}\protected@file@percent }
+\newlabel{tab:worked}{{3}{13}{具体例：希望行列、開始順位、両立可能位置}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}第1段階：枠1まで}{13}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}第2段階：枠2まで}{14}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}第3段階：枠3まで}{14}{subsection.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}第4段階：枠4まで}{14}{subsection.6.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.6}最終段階：枠5まで}{15}{subsection.6.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.7}重要な教訓：局所的に最善とは限らない}{15}{subsection.6.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}厳密最適性の証明}{15}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}準備：延長可能性を決める情報}{15}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}計算量とスケーラビリティ}{16}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}状態数}{16}{subsection.8.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}時間計算量}{16}{subsection.8.2}\protected@file@percent }
+\newlabel{eq:abstractcomplex}{{14}{17}{時間計算量}{equation.8.14}{}}
+\newlabel{eq:actualcomplex}{{15}{17}{時間計算量}{equation.8.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}人数15人という制限の意味}{17}{subsection.8.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.4}同じ厳密性を保った改善案}{17}{subsection.8.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}画面処理・ファイル処理の読み方}{17}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}Qtのイベント駆動}{17}{subsection.9.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}枠の一括生成}{18}{subsection.9.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.3}希望の可視化と実際の割当は別物}{18}{subsection.9.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.4}JSON保存と復元}{18}{subsection.9.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}入力検証・限界・モデル拡張}{18}{section.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.1}現在の実装が明示的に保証すること}{18}{subsection.10.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.2}現在の実装が保証しないこと}{19}{subsection.10.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.3}入力検査に関する実装上の注意}{19}{subsection.10.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.4}公平性・必須対象者・時間的余裕の導入（拡張案）}{19}{subsection.10.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{必須参加者}{19}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{準備時間}{19}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{希望順位の個人差}{20}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{複数資源}{20}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {11}検証方法：厳密解の独立確認}{20}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.1}小規模な全列挙との照合}{20}{subsection.11.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.2}最低限確認したい境界事例}{20}{subsection.11.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {12}より一般的な視点とまとめ}{20}{section.12}\protected@file@percent }
+\gdef \LT@i {\LT@entry 
+    {1}{109.87938pt}\LT@entry 
+    {1}{340.34673pt}}
+\@writefile{toc}{\contentsline {section}{\numberline {付録A}記号一覧}{21}{appendix.A}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {付録B}読解する際のソースコード位置}{22}{appendix.B}\protected@file@percent }
+\gdef \@abspage@last{23}

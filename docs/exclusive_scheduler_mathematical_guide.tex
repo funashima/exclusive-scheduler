@@ -1,0 +1,983 @@
+\documentclass[11pt,a4paper]{ltjsarticle}
+\usepackage[margin=25mm,top=26mm,bottom=25mm]{geometry}
+\usepackage{luatexja-fontspec}
+\usepackage{fontspec}
+\setmainfont{Liberation Serif}
+\setsansfont{Liberation Sans}
+\setmonofont[Scale=0.82]{DejaVu Sans Mono}
+\setmainjfont{Noto Serif CJK JP}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{booktabs,longtable,array,tabularx}
+\usepackage{graphicx,xcolor,tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric}
+\usepackage{enumitem}
+\usepackage{fancyvrb}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{fancyhdr}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black,pdftitle={希望順位付き時間枠割当の数理と実装},pdfauthor={Code analysis}}
+\definecolor{DeepBlue}{RGB}{26,65,103}
+\definecolor{PaleBlue}{RGB}{233,243,251}
+\definecolor{DarkGreen}{RGB}{33,103,81}
+\definecolor{LightGray}{RGB}{248,249,250}
+\renewcommand{\arraystretch}{1.18}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.35em}
+\setlist[itemize]{topsep=3pt,itemsep=1pt}
+\setlist[enumerate]{topsep=3pt,itemsep=2pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small 希望順位付き時間枠割当：数理とPython実装}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.35pt}
+\setlength{\headheight}{15pt}
+\newtheorem{theorem}{定理}[section]
+\newtheorem{lemma}[theorem]{補題}
+\newtheorem{proposition}[theorem]{命題}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{定義}
+\newtheorem{example}[theorem]{例}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{注意}
+\newcommand{\ind}[1]{\mathbf{1}\!\left[#1\right]}
+\newcommand{\lexmax}{\operatorname{lexmax}}
+\newcommand{\bits}{\operatorname{bits}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\vct}[4]{\left(#1,#2,#3,#4\right)}
+\newcommand{\negInf}{\bm{-\infty}}
+\newcommand{\source}[1]{\textsf{#1}}
+\begin{document}
+\begin{titlepage}
+\centering
+\vspace*{36mm}
+{\Large\color{DeepBlue}\bfseries Pythonによる時間枠割当ソルバの解説\par}
+\vspace{10mm}
+{\huge\bfseries 希望順位付き区間スケジューリング\par}
+\vspace{4mm}
+{\Large\bfseries 数学的定式化・動的計画法・正当性の証明\par}
+\vspace{8mm}
+{\large Hiroki Funashima\par}
+\vspace{8mm}
+{\large Thursday, October 22, 2026\par}
+\vfill
+\begin{minipage}{0.83\textwidth}
+\small
+本資料は、添付された単一ファイルのPyQt6アプリケーションを題材として、
+時間区間の重複制約、希望順位の辞書式目的関数、割当済み参加者のビットマスク表現、
+および区間スケジューリングの動的計画法を、定義・実例・証明によって詳述する。
+原実装の振る舞いと、改善案・一般化した数理モデルを明確に区別して扱う。
+\end{minipage}\par
+\end{titlepage}
+\tableofcontents
+\clearpage
+
+\section{問題の全体像}
+\subsection{何を解くプログラムか}
+このプログラムは、単一の共有資源（例えば面談を担当する一人の教員）について、
+日付付き時間枠を複数の参加者へ割り当てる。参加者は時間枠ごとに
+第1希望、第2希望、第3希望、希望なしのいずれかを入力する。
+時間が重複しない範囲で、各参加者に\emph{高々一つ}の時間枠を割り当て、
+まず割当人数を最大化し、次に希望順位の良い割当を選択する。
+
+同じ日時の枠だけでなく、\texttt{09:00--10:00} と
+\texttt{09:30--10:30} のような\emph{異なる行の部分的重複}も許さない。
+ただし、終了時刻と次の開始時刻が一致する場合は両方を利用できる。
+
+\subsection{処理の層と責任範囲}
+主な構成を表\ref{tab:modules}に示す。
+\begin{table}[htbp]
+\centering\small
+\caption{実装の主要構成}
+\label{tab:modules}
+\begin{tabularx}{\linewidth}{p{34mm}p{42mm}X}
+\toprule
+機能 & 名前 & 役割 \\
+\midrule
+入力の表現 & \code{people, dates, slots, wishes} & 参加者、日時、希望順位行列を管理する \\
+結果型 & \code{Solution} & 割当組、未割当者、希望順位件数を保持する \\
+日時の解釈 & \code{\_bounds()} & 日付と時刻文字列から半開区間の境界を作る \\
+厳密最適化 & \code{solve()} & 終了時刻順の区間DPとビットマスクで最適化する \\
+個別・一括編集 & \code{SlotDialog}, \code{BatchSlotDialog} & 日付・開始終了時刻を入力し、連続枠を生成する \\
+画面とファイル & \code{Scheduler} & 表示、希望編集、実行、JSON入出力を管理する \\
+起動 & \code{main()} & Qtイベントループを開始する \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{GUIと計算核を分離する意義}
+\code{solve(people,dates,slots,wishes)} はPyQt6のウィジェットを参照しない。
+したがって、入力を通常のPythonのリストで与えれば、GUIを起動しなくても
+最適化を試験できる。画面表示に関する変更と、アルゴリズム自体の変更を
+独立に行えるという、設計上の明確な利点がある。
+
+\section{入力データの数学的表現}
+\subsection{集合と添字}
+参加者を
+\[
+ P=\{0,1,\ldots,n-1\}
+\]
+とし、入力の時間枠を
+\[
+ I=\{0,1,\ldots,\ell-1\}
+\]
+とする。ここで $n$ は参加者数、$\ell$ は入力枠数である。
+プログラムでは、希望がすべてゼロの行を最適化前に除外するので、
+以下では\emph{希望のある時間枠}を改めて終了時刻順に
+$1,\ldots,m$ と番号付けして用いる（$m\leq\ell$）。
+
+それぞれの時間枠 $i$ の開始・終了時刻を $s_i,e_i$ とする。
+
+\begin{definition}[半開時間区間]
+時間枠 $i$ が占有する時間の集合を
+\[
+  J_i=[s_i,e_i)=\{t\mid s_i\leq t<e_i\}
+\]
+と定義する。ただし $s_i<e_i$ とする。
+\end{definition}
+
+終了時刻を含まないため、$[09{:}00,09{:}30)$ と
+$[09{:}30,10{:}00)$ は重ならない。二つの区間 $i,j$ が両立する必要十分条件は
+\[
+ J_i\cap J_j=\varnothing
+ \quad\Longleftrightarrow\quad
+ e_i\leq s_j\ \text{または}\ e_j\leq s_i
+\]
+である。
+
+\subsection{希望順位行列}
+希望を
+\[
+  w_{ip}\in\{0,1,2,3\}
+\]
+とする。$w_{ip}=0$ は希望なし、$1,2,3$ はそれぞれ第1、第2、第3希望である。
+原コードでは、\code{wishes[i][p]} として格納される。
+つまり、\emph{行が時間枠、列が参加者}である。
+
+\begin{example}[希望行列]
+3人A、B、Cについて、次の入力を考える。
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+時間枠 & A & B & C \\
+\midrule
+09:00--09:30 & 1 & 0 & 0 \\
+09:15--09:45 & 0 & 1 & 0 \\
+09:30--10:00 & 0 & 2 & 1 \\
+10:00--10:30 & 1 & 1 & 2 \\
+10:30--11:00 & 0 & 0 & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+例えば第3行の $w_{3,B}=2$ は、Bがその時間枠を第2希望とすることを表す。
+\end{example}
+
+同じ参加者が複数の時間枠に同一の希望順位を入力することは、\emph{原実装では許される}。
+「第1希望は一つだけ」という制約は、このプログラムには存在しない。
+
+\subsection{配列の整合性}
+\code{dates}, \code{slots}, \code{wishes} の同じ行番号は同一時間枠を指す。
+\code{sort\_slots()} がこの3配列をまとめて\code{zip()}し、日時順に並べ替えるのは、
+ソート後にも希望の所有関係を保つためである。
+1配列だけを並べ替えると、希望者と日時の対応が破壊される。
+
+\section{割当問題の厳密な定式化}
+\subsection{二値変数}
+二値決定変数を
+\[
+ x_{ip}=\begin{cases}
+ 1,&\text{時間枠 }i\text{ を参加者 }p\text{ に割り当てる},\\
+ 0,&\text{そうでない}
+ \end{cases}
+\]
+と定める。希望のない組合せは採用してはならない。
+\begin{equation}
+ x_{ip}=0\qquad(w_{ip}=0).
+ \label{eq:unrequested}
+\end{equation}
+
+\subsection{一人一枠制約}
+各参加者への割当は高々一つである。
+\begin{equation}
+ \sum_{i=1}^{m}x_{ip}\leq1
+ \qquad(\forall p\in P).
+ \label{eq:person}
+\end{equation}
+
+「高々一つ」であって「必ず一つ」ではないので、希望が衝突して全員に割り当てられない場合にも、
+実行可能な部分割当を求められる。
+
+\subsection{共有資源の重複禁止}
+任意の時刻 $t$ において、一つの時間枠しか使用できない。
+\begin{equation}
+ \sum_{i:\,s_i\leq t<e_i}\sum_{p\in P}x_{ip}\leq1
+ \qquad(\forall t).
+ \label{eq:resource}
+\end{equation}
+この制約は、同じ行を2人に割り当てることも、異なる行の重複枠を同時に採用することも禁じる。
+実際の計算では無限個の時刻を列挙せず、区間の端点関係を使う。
+
+同等の有限な制約として、同一時間枠に対して
+\[
+ \sum_{p\in P}x_{ip}\leq1\qquad(\forall i)
+\]
+を置き、異なる重複区間 $J_i\cap J_j\ne\varnothing$ に対して
+\[
+ \sum_{p\in P}x_{ip}+\sum_{p\in P}x_{jp}\leq1
+\]
+を置くこともできる。原コードは明示的な整数計画ソルバを用いず、これらの制約を
+DPの構造によって守る。
+
+\subsection{割当を評価する四次元ベクトル}
+割当 $x$ に対し、以下を定義する。
+\begin{align}
+ N(x)&=\sum_{i,p}x_{ip}, &&\text{割当人数},\\
+ C_1(x)&=\sum_{i,p}\ind{w_{ip}=1}\,x_{ip}, &&\text{第1希望の割当数},\\
+ C_2(x)&=\sum_{i,p}\ind{w_{ip}=2}\,x_{ip}, &&\text{第2希望の割当数}.
+\end{align}
+ここで $\ind{Q}$ は命題 $Q$ が真なら1、偽なら0となる\emph{指示関数}である。
+
+時間枠の開始日時が早い順に、$0,1,\dots,m-1$ の順位 $r_i$ を付与する。
+開始日時が一致したときは終了日時、元の行番号の順で順位が決まる。
+順位和を
+\[
+ R(x)=\sum_{i,p}r_i x_{ip}
+\]
+とする。最終的な目的関数は
+\begin{equation}
+ \boxed{\displaystyle
+ \lexmax_x\ \Phi(x),\qquad
+ \Phi(x)=\bigl(N(x),C_1(x),C_2(x),-R(x)\bigr)}.
+ \label{eq:lexobj}
+\end{equation}
+
+\subsection{辞書式順序（lexicographic order）の意味}
+二つのベクトル $a,b\in\mathbb Z^4$ を左から比較し、
+最初に相違が現れる成分が大きい方を優位とする。
+例えば
+\[
+ (8,2,4,-20)>_{\mathrm{lex}}(7,7,0,-3)
+\]
+である。第1希望が少なくても、割当人数が多い解を優先する。
+また
+\[
+ (8,5,1,-40)>_{\mathrm{lex}}(8,4,4,-2)
+\]
+である。割当人数が同じなら、第1希望の数が優先される。
+
+\begin{remark}[第3希望の役割]
+第3希望の件数は明示的には数えない。すべての割当は第1・第2・第3希望のいずれかなので
+\[
+ C_3(x)=N(x)-C_1(x)-C_2(x).
+\]
+したがって $N$ と $C_1$ を固定して $C_2$ を最大化すると、$C_3$ は最小になる。
+これは第3希望を禁止することを意味しない。人数最大化に必要なら第3希望も採用する。
+\end{remark}
+
+\begin{remark}[時刻評価は総順位和]
+$-R(x)$ は「最も早い開始時刻を優先する」という単純な辞書順ではない。
+採用した時間枠全体の\emph{開始日時順位の合計}を最小化する。
+また、実時間の分数や日数の合計ではなく、希望の存在する枠の\emph{相対順位}で評価する。
+同順位の希望充足度を持つ解の最後のタイブレークとしてのみ使われる。
+\end{remark}
+
+\subsection{重み付き和との違い}
+例えば $N+0.1C_1+0.01C_2$ のように重みを付ける場合、
+最大値の上下限を吟味しなければ、下位基準が上位基準を逆転する危険がある。
+辞書式目的関数は優先順位を直接定義するので、その危険がない。
+逆に、このルールには「第1希望を何件増やせば未割当1人を容認できるか」という
+トレードオフが存在しない。この優先順位が運用方針に適合するかは、数学とは別の設計判断である。
+
+\section{区間スケジューリングと動的計画法}
+\subsection{なぜ単純な貪欲法では不足するのか}
+開始時刻の早い枠から順に割り当てる方法では、後続の枠を圧迫することがある。
+希望順位が高いものから採用する方法でも、その時点で使わなかった枠の組合せによって
+全体の割当人数が変わるため、必ずしも大域的最適解を得られない。
+
+時間区間の相互排他性は、ある枠を選ぶと利用できる前後の候補を制限する。
+さらに各人に高々1枠という制約が加わる。
+原実装は\emph{区間の終了時刻によるDP}と\emph{参加者集合の状態管理}を組み合わせることで、
+この二つを同時に扱う。
+
+\subsection{終了時刻順へのソート}
+希望者が一人以上存在する $m$ 個の区間を
+\[
+ e_1\leq e_2\leq\cdots\leq e_m
+\]
+となるように並べる。終了時刻が等しい場合は開始時刻、元の入力行番号で順序を決める。
+この番号は説明用の\emph{内部番号}であり、結果表示のための元の行番号とは異なる。
+
+\subsection{直前の両立可能位置}
+各区間 $j$ に対して
+\begin{equation}
+ p(j)=\max\bigl(\{k\mid 1\leq k<j,\ e_k\leq s_j\}\cup\{0\}\bigr)
+ \label{eq:pred}
+\end{equation}
+と定義する。$p(j)$ は、現在の区間 $j$ の開始以前に終了する、最も後ろの内部番号である。
+終了時刻順に整列済みなので、$1,\ldots,p(j)$ のすべての区間は $j$ と両立する。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1.12cm,y=0.78cm,>=Latex,font=\small]
+ \draw[->] (0.4,0) -- (9.7,0) node[right]{時刻};
+ \foreach \x/\lab in {1/09:00,3/09:30,5/10:00,7/10:30,9/11:00}{
+  \draw[gray!35] (\x,0) -- (\x,5.4);
+  \node[below] at (\x,0){\lab};
+ }
+ \draw[line width=5pt,DeepBlue] (1,4.8)--(3,4.8);
+ \draw[line width=5pt,DeepBlue!65] (2,3.8)--(4,3.8);
+ \draw[line width=5pt,DarkGreen] (3,2.8)--(5,2.8);
+ \draw[line width=5pt,orange!85!black] (5,1.8)--(7,1.8);
+ \draw[line width=5pt,orange!65!black] (7,0.8)--(9,0.8);
+ \foreach \y/\lab in {4.8/{1},3.8/{2},2.8/{3},1.8/{4},0.8/{5}}{
+  \node[left] at (.85,\y){枠\lab};
+ }
+ \node[align=left,anchor=west] at (7.4,4.9){例：$p(4)=3$};
+ \node[align=left,anchor=west] at (7.4,4.3){枠3の終了と\\枠4の開始が一致};
+\end{tikzpicture}
+\caption{終了時刻順の区間と $p(j)$：隣接区間は同時採用可能}
+\label{fig:intervals}
+\end{figure}
+
+\subsection{参加者集合をビットマスクで表す}
+参加者 $p$ にビット番号 $p$ を割り当て、部分集合 $M\subseteq P$ を
+\begin{equation}
+ \bits(M)=\sum_{p\in M}2^p
+ \label{eq:mask}
+\end{equation}
+で表す。3人A,B,Cの例を表\ref{tab:masks}に示す。
+\begin{table}[htbp]
+\centering
+\caption{ビットマスクと割当済み集合}
+\label{tab:masks}
+\begin{tabular}{ccc}
+\toprule
+整数値 & 二進数（CBA） & 割当済み集合 $M$ \\
+\midrule
+0 & 000 & $\varnothing$ \\
+1 & 001 & $\{A\}$ \\
+2 & 010 & $\{B\}$ \\
+3 & 011 & $\{A,B\}$ \\
+4 & 100 & $\{C\}$ \\
+5 & 101 & $\{A,C\}$ \\
+6 & 110 & $\{B,C\}$ \\
+7 & 111 & $\{A,B,C\}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Pythonでは次のビット演算に対応する。
+\begin{Verbatim}[fontsize=\small,frame=single]
+bit = 1 << person                 # 2**person
+already_assigned = bool(mask & bit)
+next_mask = mask | bit            # add this person
+\end{Verbatim}
+
+$\code{mask \& (1 << person)}$ が非ゼロなら、その人は割当済みである。
+ビット集合により、集合の所属判定と追加を整数演算で実現できる。
+
+\subsection{DP状態の厳密な意味}
+\begin{definition}[部分問題の評価値]
+$F_j(M)$ を、\emph{終了時刻順で最初の $j$ 個の区間のみを使用して、
+割当済み参加者がちょうど $M$ となる実行可能解}のうち、
+目的関数 $\Phi$ が辞書式に最大のものの評価値とする。
+実行不可能な場合は $F_j(M)=\negInf$ とする。
+\end{definition}
+
+ここで「ちょうど $M$」が重要である。割当人数が同じでも、どの参加者が割当済みかによって
+今後使用できる参加者が異なる。この情報を残さず評価値だけ保存すると、
+誤って同じ人に二つの枠を割り当てる可能性がある。
+
+初期条件は
+\begin{equation}
+ F_0(\varnothing)=(0,0,0,0),\qquad
+ F_0(M)=\negInf\quad(M\ne\varnothing)
+ \label{eq:initial}
+\end{equation}
+である。
+
+\subsection{区間一件を採用するときの増分}
+区間 $j$ を参加者 $q$ に割り当てることが許されるのは $w_{jq}>0$ のときだけである。
+この割当による評価値の増分を
+\begin{equation}
+ \Delta(j,q)=\left(
+ 1,\ind{w_{jq}=1},\ind{w_{jq}=2},-r_j
+ \right)
+ \label{eq:delta}
+\end{equation}
+とする。区間を採用すると人数成分は必ず1増え、希望順位に応じた成分が増え、
+最後の成分には開始日時の順位が減算される。
+
+\subsection{DPの基本漸化式}
+現在の区間 $j$ に注目し、割当済み集合を $M$ とする。
+実行可能解は「区間 $j$ を使用しない」か「誰か $q\in M$ に割り当てる」かの二択である。
+前者は $F_{j-1}(M)$ に対応する。
+後者の場合、その他の区間はすべて $j$ の開始以前に終了しなければならないので、
+残りの最適解は $F_{p(j)}(M\setminus\{q\})$ から構成できる。
+
+したがって
+\begin{equation}
+ \boxed{
+ F_j(M)=\lexmax\left\{
+ \begin{aligned}
+  &F_{j-1}(M),\\[-1pt]
+  &F_{p(j)}(M\setminus\{q\})+\Delta(j,q)
+  &&\ (q\in M,\ w_{jq}>0)
+ \end{aligned}\right\}}
+ \label{eq:recurrence}
+\end{equation}
+となる。ただし、条件を満たさない候補と実行不可能な状態は除外する。
+
+\begin{remark}[古典的区間スケジューリングとの関係]
+通常の重み付き区間スケジューリングでは、
+$\mathrm{OPT}(j)=\max\{\mathrm{OPT}(j-1),v_j+\mathrm{OPT}(p(j))\}$
+の形となる。本実装では $\mathrm{OPT}$ が部分集合 $M$ ごとに存在し、
+重み $v_j$ が参加者と希望順位に依存する四次元ベクトルになっている。
+\end{remark}
+
+\subsection{正方向の更新として見る}
+式\eqref{eq:recurrence}は、原コードと同じく\emph{正方向}にも書ける。
+まず
+\[
+ F_j(M)\gets F_{j-1}(M)
+\]
+として区間 $j$ を使わない解を継承する。
+次に各 $M$ について $F_{p(j)}(M)$ を参照し、未割当の参加者 $q\notin M$ かつ $w_{jq}>0$ なら
+\begin{equation}
+ F_j(M\cup\{q\})\gets
+ \max_{\mathrm{lex}}\left\{
+ F_j(M\cup\{q\}), F_{p(j)}(M)+\Delta(j,q)
+ \right\}
+ \label{eq:forward}
+\end{equation}
+と更新する。この式が \code{solve()} のループに直接対応する。
+
+\section{Python実装と数学記号の対応}
+\subsection{前処理と入力検査}
+原実装は人数 $n>15$ を拒否し、入力配列の長さと希望値の型・値を検査する。
+各行の希望値がすべてゼロなら、その行を最適化対象から除外する。
+\begin{Verbatim}[fontsize=\small,frame=single]
+if n > 15:
+    raise ValueError(...)
+if not (len(dates) == len(slots) == len(wishes)):
+    raise ValueError(...)
+for i, (d, s, preferences) in enumerate(...):
+    if not any(preferences):
+        continue
+    start, end = _bounds(d, s)
+    events.append((start, end, i, preferences))
+\end{Verbatim}
+
+その後、\code{events.sort(key=lambda x: (x[1], x[0], x[2]))} によって
+終了時刻順に並べる。希望順位のタイブレークに使う $r_j$ は別の
+開始時刻順（開始、終了、元行番号）で算出される。
+\emph{DPの処理順と、早さを評価する順位の定義は異なる}。
+
+\subsection{DPテーブルの初期化}
+原実装では \code{dp[j]} は辞書であり、そのキーはビットマスク整数、値は
+\code{(score, assignments)} である。
+\begin{Verbatim}[fontsize=\small,frame=single]
+dp = [
+    {0: ((0, 0, 0, 0), ())}
+]
+\end{Verbatim}
+
+\code{score} は数理モデルの $F_j(M)$、
+\code{assignments} は最良値を実現する具体的な割当の復元情報である。
+割当は\code{(original\_slot\_index, person\_index)} のタプルとして記録される。
+
+\subsection{\texorpdfstring{$p(j)$}{p(j)} に対応する探索}
+\begin{Verbatim}[fontsize=\small,frame=single]
+available = 0
+for k in range(j - 1, 0, -1):
+    if events[k - 1][1] <= start:
+        available = k
+        break
+\end{Verbatim}
+
+Pythonのリストは0始まり、説明の区間番号は1始まりである。
+このため $\code{events[k-1]}$ が数学上の区間 $k$ に対応する。
+探索結果 \code{available} が $p(j)$ である。
+
+\subsection{状態遷移と辞書式比較}
+\begin{Verbatim}[fontsize=\small,frame=single]
+current = dp[-1].copy()
+for mask, (score, assignments) in dp[available].items():
+    for person, rank in enumerate(prefs):
+        if rank == 0 or (mask & (1 << person)):
+            continue
+        next_mask = mask | (1 << person)
+        candidate = (
+            score[0] + 1,
+            score[1] + (rank == 1),
+            score[2] + (rank == 2),
+            score[3] - order[idx]
+        )
+        existing = current.get(next_mask)
+        if existing is None or candidate > existing[0]:
+            current[next_mask] = (
+                candidate, assignments + ((idx, person),)
+            )
+dp.append(current)
+\end{Verbatim}
+
+\code{rank == 1} はPythonで真なら \code{True}（算術上は1）、
+偽なら \code{False}（算術上は0）となる。
+4要素タプルの \code{>} は左から成分を比較するので、
+辞書式目的関数 $\Phi$ の順序をそのまま実現する。
+
+なお \code{current = dp[-1].copy()} は区間を使わない候補を継承する操作である。
+\code{dp[available]} は、現在の区間と時間が重ならない過去の最適解である。
+二種類の遷移が同時に実装されている。
+
+\subsection{最終解と復元}
+\begin{Verbatim}[fontsize=\small,frame=single]
+best_mask, (best_score, choices) = max(
+    dp[-1].items(),
+    key=lambda item: (item[1][0], -item[0])
+)
+\end{Verbatim}
+
+最終段階で到達可能なビットマスクすべてを比較し、評価値が最大の状態を選ぶ。
+評価値が同一なら $-\code{mask}$ により\emph{ビットマスク整数が小さい方}を選ぶ。
+この最後の規則は希望順位とは別の、実装上の決定的なタイブレークである。
+同じビットマスク・同じ評価値に対して複数経路が存在するときは、
+先に記録された割当が残る（更新条件が \code{>} であり \code{>=} ではないため）。
+
+最終結果は \code{Solution(assignments,unassigned,counts)} であり、
+第3希望の件数は $N-C_1-C_2$ により計算する。
+
+\section{実際に手で追う計算例}
+\subsection{入力例と両立位置}
+3名A、B、Cと5時間枠を考える。全枠の日付は同一とする。
+表\ref{tab:worked}の $r_j$ は開始時刻順の0始まり順位である。
+\begin{table}[htbp]
+\centering\small
+\caption{具体例：希望行列、開始順位、両立可能位置}
+\label{tab:worked}
+\begin{tabular}{c l ccc cc}
+\toprule
+$j$ & 時間枠 & A & B & C & $r_j$ & $p(j)$ \\
+\midrule
+1 & 09:00--09:30 & 1 & 0 & 0 & 0 & 0 \\
+2 & 09:15--09:45 & 0 & 1 & 0 & 1 & 0 \\
+3 & 09:30--10:00 & 0 & 2 & 1 & 2 & 1 \\
+4 & 10:00--10:30 & 1 & 1 & 2 & 3 & 3 \\
+5 & 10:30--11:00 & 0 & 0 & 1 & 4 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+枠1と枠2は重なっている。一方、枠1と枠3、枠3と枠4、枠4と枠5は、
+境界で接するだけなので両立する。
+
+\subsection{第1段階：枠1まで}
+開始状態は $F_0(\varnothing)=(0,0,0,0)$ である。
+枠1はAのみが第1希望であるため、
+\[
+ F_1(\varnothing)=(0,0,0,0),\qquad
+ F_1(\{A\})=(1,1,0,0)
+\]
+が得られる。後者のビットマスクは二進数\code{001}、整数値1である。
+
+\subsection{第2段階：枠2まで}
+枠2はBが第1希望だが、枠1と重なっている。
+$p(2)=0$ なので、枠2を採用する解は $F_0$ から構成しなければならない。
+したがって
+\[
+ F_2(\{B\})=(1,1,0,-1)
+\]
+は作れるが、枠1のAと枠2のBを同時に採用する状態 $\{A,B\}$ は作れない。
+この段階で「それぞれ別人なのだからよい」という誤った割当を防いでいる。
+
+\subsection{第3段階：枠3まで}
+$p(3)=1$ であるため、枠3は枠1と両立する。
+枠3をCの第1希望として割り当てると
+\begin{align*}
+ F_3(\{A,C\})
+ &=F_1(\{A\})+\Delta(3,C)\\
+ &=(1,1,0,0)+(1,1,0,-2)\\
+ &=(2,2,0,-2)
+\end{align*}
+となる。
+一方、枠3をBの第2希望として割り当てると
+\[
+ F_3(\{A,B\})=(1,1,0,0)+(1,0,1,-2)=(2,1,1,-2)
+\]
+となる。
+この時点では、AとCを割り当てる方が第1希望件数で優れる。
+
+\subsection{第4段階：枠4まで}
+$p(4)=3$ である。枠3までの状態 $\{A,C\}$ に
+Bの第1希望である枠4を追加できる。
+\begin{align*}
+ F_4(\{A,B,C\})
+ &\succeq_{\rm lex}F_3(\{A,C\})+\Delta(4,B)\\
+ &=(2,2,0,-2)+(1,1,0,-3)\\
+ &=(3,3,0,-5).
+\end{align*}
+つまり
+\[
+ \boxed{\text{A}\mapsto1,\quad\text{C}\mapsto3,\quad\text{B}\mapsto4}
+\]
+という割当で、全員を第1希望に割り当てられる。
+
+別の候補として、枠2をB、枠4をA、枠5をCに与えても全員が第1希望になる。
+しかし順位和は $1+3+4=8$ であり、選ばれた割当の $0+2+3=5$ より大きい。
+したがって辞書式評価では
+\[
+ (3,3,0,-5)>_{\rm lex}(3,3,0,-8)
+\]
+となる。希望充足数に差がないため、初めて時間の早さが比較される。
+
+\subsection{最終段階：枠5まで}
+枠5を採用する候補は存在するが、すでに得られた
+$(3,3,0,-5)$ を上回らない。よって最終解は
+\[
+ \Phi^*=(3,3,0,-5),\qquad
+ \text{未割当者}=\varnothing
+\]
+である。コード上の戻り値は、入力行番号が0始まりなので
+\begin{Verbatim}[fontsize=\small,frame=single]
+Solution(
+    assignments=((0, 0), (2, 2), (3, 1)),
+    unassigned=(),
+    counts=(3, 3, 0)
+)
+\end{Verbatim}
+と表される。
+
+\subsection{重要な教訓：局所的に最善とは限らない}
+枠2はBの第1希望であるが、これを先に確定してしまうと枠1のAを失う。
+しかし枠3のCと枠4のBを組み合わせれば、全員が第1希望になる。
+このような全体の組合せは、局所的な希望順位だけを見るアルゴリズムでは見つけられない。
+
+\section{厳密最適性の証明}
+\subsection{準備：延長可能性を決める情報}
+\begin{lemma}[同一状態の支配関係]
+同じ $j$ と同じ割当済み集合 $M$ に対応する二つの実行可能解 $X,Y$ を考える。
+$\Phi(X)\geq_{\rm lex}\Phi(Y)$ なら、DPで $Y$ を破棄し $X$ のみ保存しても、
+将来の最適解を失わない。
+\end{lemma}
+\begin{proof}
+未来の区間に新たに割り当てられる参加者は $P\setminus M$ のみである。
+同じ $M$ に対して、将来使用可能な参加者集合は一致する。
+また、ある未来の区間 $k$ へ $F_j(M)$ を延長する遷移が許されるのは
+$p(k)\geq j$ の場合であり、このとき $1,\ldots,j$ のどの区間も $k$ と時間的に両立する。
+$p(k)<j$ の場合、遷移はそもそも $F_j(M)$ を参照しない。
+従って、同じ段階と集合を持つ二つの状態は、その先の許容される延長先についても一致する。
+同じ追加割当を $X,Y$ に施した場合、その評価増分は同一のベクトル $d$ である。
+辞書式順序はベクトル加算と両立するので
+$\Phi(X)+d\geq_{\rm lex}\Phi(Y)+d$ が成り立つ。
+したがって劣る $Y$ を保存する必要はない。
+\end{proof}
+
+\begin{theorem}[DP漸化式の正当性]
+式\eqref{eq:initial}を初期条件とし、式\eqref{eq:recurrence}により計算した
+$F_j(M)$ は、最初の $j$ 区間からちょうど参加者集合 $M$ を割り当てる
+すべての実行可能解の中で、辞書式目的関数を最大にする。
+\end{theorem}
+\begin{proof}
+$j$ に関する数学的帰納法を用いる。$j=0$ では、区間を一つも選べないため
+$M=\varnothing$ の解だけが実行可能であり、初期条件は正しい。
+
+$0,1,\ldots,j-1$ に対して主張が成立すると仮定する。
+任意の実行可能解 $X$ が区間 $j$ を採用しない場合、$X$ は最初の
+$j-1$ 区間から構成され、帰納法の仮定よりその最良値は $F_{j-1}(M)$ である。
+
+区間 $j$ を参加者 $q$ に割り当てる場合、他の採用区間 $i$ はすべて
+$e_i\leq s_j$ を満たす。そうでなければ、終了時刻順に $i<j$ であることと合わせて
+$i$ と $j$ が重複してしまう。
+従って他の採用区間はすべて $1,\ldots,p(j)$ に含まれ、その割当済み集合は
+$M\setminus\{q\}$ である。帰納法の仮定より、この部分の最良値は
+$F_{p(j)}(M\setminus\{q\})$ である。
+さらに $w_{jq}>0$ という希望条件と $q\notin M\setminus\{q\}$ を満たし、
+この部分解に区間 $j$ を追加すれば実行可能な解を構成できる。
+よって、区間 $j$ を採用する場合の最良値は式\eqref{eq:recurrence}の第2候補で尽くされる。
+
+どの実行可能解もこの二場合のいずれかであり、両場合から得られる候補も実行可能である。
+これらの辞書式最大値を取る漸化式は正しい。
+\end{proof}
+
+\begin{theorem}[ソルバの大域的最適性]
+前処理で得られた区間集合と希望行列が有効であるとき、
+\code{solve()} が返す割当は、式\eqref{eq:unrequested}、\eqref{eq:person}、
+\eqref{eq:resource}を満たし、式\eqref{eq:lexobj}の目的関数を大域的に最大化する。
+\end{theorem}
+\begin{proof}
+前定理より、各 $M$ の $F_m(M)$ は、その集合を割り当てる最良値である。
+すべての実行可能解には何らかの割当済み集合 $M$ が対応する。
+よって $\lexmax_{M\subseteq P}F_m(M)$ は実行可能解全体の最大値である。
+最終処理の \code{max(dp[-1].items(), ...)} はまさにこれを求め、
+保存した復元情報から実行可能な割当を返す。
+\end{proof}
+
+\begin{remark}[最適性の適用範囲]
+これは\emph{定式化された制約と評価基準に対する最適性}である。
+移動・準備・休憩時間、参加者の属性間の公平性、希望枠外での調整可能性、
+運用上の優先者など、モデルに与えていない条件についての最適性は意味しない。
+\end{remark}
+
+\section{計算量とスケーラビリティ}
+\subsection{状態数}
+参加者数を $n$ とすると、割当済み集合 $M$ の候補は最大 $2^n$ 通りである。
+時間枠の段階は $m+1$ 通りなので、DP辞書が保持し得る状態数の粗い上界は
+\[
+ (m+1)2^n
+\]
+である。実際には、区間の個数より多い人を割り当てられないこと、
+希望が存在しない組合せがあること等により、到達可能な状態は少なくなることもある。
+
+\subsection{時間計算量}
+前処理のソートは $O(m\log m)$ である。
+$p(j)$ を各区間で後ろ向きに線形探索するので、その合計は最悪 $O(m^2)$ となる。
+DPでは、各段階に最大 $2^n$ 個の状態があり、各状態から最大 $n$ 人を試すため、
+評価ベクトルと復元情報を定数時間で更新できると仮定した\emph{抽象的な遷移数}は
+\[
+ O(mn2^n)
+\]
+である。したがって、基本的な演算数の評価は
+\begin{equation}
+ O(m\log m+m^2+mn2^n)=O(m^2+mn2^n).
+ \label{eq:abstractcomplex}
+\end{equation}
+
+ただし原コードの
+\code{assignments + ((idx, person),)} は既存タプルをコピーして新タプルを生成する。
+割当履歴の長さは最大 $n$ なので、各遷移が最悪 $O(n)$ かかる。
+Python実装の履歴コピーも含めた安全側の上界は
+\begin{equation}
+ \boxed{O(m^2+mn^2 2^n)}
+ \label{eq:actualcomplex}
+\end{equation}
+と評価できる（ソート項は省略）。
+同様に、辞書本体の状態数だけなら $O(m2^n)$ だが、履歴タプルの実体まで含めれば
+空間計算量の粗い上界は $O(mn2^n)$ である。
+
+\subsection{人数15人という制限の意味}
+\begin{center}
+\begin{tabular}{cr}
+\toprule
+$n$ & $2^n$ \\
+\midrule
+5 & 32 \\
+10 & 1,024 \\
+15 & 32,768 \\
+20 & 1,048,576 \\
+\bottomrule
+\end{tabular}
+\end{center}
+参加者数を5増やすごとに状態集合の最大数が32倍になる。
+したがって原実装は $n>15$ を拒否する。
+これは\emph{15人なら必ず高速}という保証ではなく、指数的増大を抑えるための実務上の上限である。
+
+\subsection{同じ厳密性を保った改善案}
+\begin{enumerate}
+\item 終了時刻列に対して \code{bisect} を用い、$p(j)$ を各 $O(\log m)$ で算出する。
+\item DP状態には評価値と直前状態へのポインタだけを保持し、復元用の長いタプルを毎回コピーしない。
+\item 前処理で明らかに希望を持たない枠を除外する現行方針を保ち、到達可能なビットマスクのみ辞書に保存する。
+\item 必要なら、同等の目的関数を持つ整数計画モデルで小規模入力の結果を照合する。
+\end{enumerate}
+いずれも元の目的関数を変更せずに改善できる可能性があるが、
+実測性能は問題例の希望密度と区間の重なり方に依存する。
+
+\section{画面処理・ファイル処理の読み方}
+\subsection{Qtのイベント駆動}
+\code{Scheduler(QMainWindow)} は表、ボタン、メニュー、結果欄を配置する。
+例えば
+\begin{Verbatim}[fontsize=\small,frame=single]
+self.table.cellDoubleClicked.connect(self.toggle_wish)
+button.clicked.connect(callback)
+\end{Verbatim}
+によって、Qtの\emph{シグナル}とPythonの\emph{スロット（コールバック）}を結び付ける。
+ダブルクリックされた行・列が \code{toggle\_wish(row,col)} に渡され、
+希望値が $(w+1)\bmod4$ で循環する。
+
+\subsection{枠の一括生成}
+\code{BatchSlotDialog} は開始・終了を分単位の整数に変換し、
+長さ $h$ 分の半開区間を連続して生成する。
+$[a,b)$ をちょうど $h$ 分ずつ区切るには
+\[
+ b>a,\qquad (b-a)\bmod h=0
+\]
+が必要である。この条件を満たさない場合、端数枠を作らず入力を拒否する。
+
+\subsection{希望の可視化と実際の割当は別物}
+\code{refresh()} は各時間枠の希望人数を数え、希望なしを灰、
+希望1人を緑、希望2人以上を橙で表示する。ソルバによって実際に採用された
+\emph{参加者セル}は青色となる。
+
+緑色は「その行を希望する人が一人」という局所的事実であって、
+ソルバによる確定割当を意味しない。異なる行の時間重複は、この局所的な色分けに反映されないが、
+\code{solve()} の時間制約では考慮される。
+
+\subsection{JSON保存と復元}
+\code{payload()} は
+\code{version}, \code{people}, \code{dates}, \code{slots}, \code{wishes}
+をJSON化する。日本語をそのまま出力するため \code{ensure\_ascii=False} を指定する。
+保存処理は隣接する一時ファイル \code{.tmp} に書き込み、それを目的パスへ置換する。
+これは直接書き換える場合と比べて、途中失敗による部分書込の危険を減らす。
+
+原コードは\emph{ソルバ結果を保存しない}。ファイルを再度開いた場合には、
+入力希望から再計算する。古い形式の真偽値希望は
+\code{True -> 1}, \code{False -> 0} として読み替える。
+日付のない旧形式の行は空日付として取り扱われ、計算時には西暦1年1月1日へ写像される。
+
+\section{入力検証・限界・モデル拡張}
+\subsection{現在の実装が明示的に保証すること}
+\begin{enumerate}
+\item 希望のない組合せを採用しない。
+\item 一人につき高々1枠を採用する。
+\item 共有資源上の時間的重複を認めない。
+\item 制約内で割当人数、第1希望数、第2希望数、早い時間順位和の順に最適化する。
+\item 全員割当が不可能な場合にも、人数最大の部分割当を返す。
+\end{enumerate}
+
+\subsection{現在の実装が保証しないこと}
+\begin{enumerate}
+\item 各参加者の第1・第2・第3希望が一つずつであること。複数入力は許容される。
+\item 面談間の移動時間、準備時間、休憩時間などの自動確保。
+\item 複数の会場や複数教員を同時に使用する資源割当。
+\item 希望入力のない参加者を無理に割り当てること。
+\item 異なる日付・時刻をまたぐ夜間区間の入力。
+\item 登録した枠のすべてが非重複であること。異なる枠の重複は許され、ソルバ側で同時採用を防ぐ。
+\end{enumerate}
+
+\subsection{入力検査に関する実装上の注意}
+\code{solve()} は希望のある各行について日付・時刻文字列を解析する。
+しかし、\emph{希望が全くない行}は解析前にスキップするので、その行の日時文字列が不正でも
+ソルバではエラーにならない場合がある。
+また \code{open\_file()} はJSONの構造・日付を検査するが、時間枠文字列の完全な解析と
+区間の正当性確認は読込時ではなく主にソルバ実行時に委ねられる。
+
+この違いを意識し、厳格なデータ検証が必要ならファイル読込時と編集確定時にも
+\code{\_bounds()} 相当のチェックを統一して適用することが望ましい。
+
+\subsection{公平性・必須対象者・時間的余裕の導入（拡張案）}
+以下は\emph{原実装には存在しない}モデル拡張である。
+
+\paragraph{必須参加者}
+必須対象者の集合 $P_{\mathrm{req}}\subseteq P$ を設け、
+\[
+ \sum_i x_{ip}=1\qquad(p\in P_{\mathrm{req}})
+\]
+とすると、割当不可能な入力に対しては実行可能解自体が存在しなくなる。
+この場合には、制約充足失敗を明示的に報告する設計が必要になる。
+
+\paragraph{準備時間}
+面談終了後に $\delta$ 分の準備時間が必要なら、各区間を
+\[
+ J'_i=[s_i,e_i+\delta)
+\]
+のように拡張して衝突判定する方法がある。ただし日付をまたぐか否か、
+次の区間の始まりにのみ余裕が必要かなど、運用規則を確認しなければならない。
+
+\paragraph{希望順位の個人差}
+第1希望の件数だけを最大化すると、同一人物が常に不利な希望に回ることの
+不公平性は評価できない。公平性を目的にする場合は、
+個人ごとの選好効用や所属グループの充足率を追加する必要がある。
+その際は元の辞書式優先関係との整合性を再検討しなければならない。
+
+\paragraph{複数資源}
+面談可能な教員や部屋が複数ある場合は、割当変数を $x_{ipr}$
+（時間枠 $i$、参加者 $p$、資源 $r$）へ拡張できる。
+しかし単一資源という区間DPの構造が変わるため、本コードをそのまま使えるとは限らない。
+
+\section{検証方法：厳密解の独立確認}
+\subsection{小規模な全列挙との照合}
+DPの正当性は上記の帰納法で説明できるが、実装ミスの検出には別方式の検証が有効である。
+小規模な $n,m$ について、希望のある候補 $(i,p)$ から部分集合を全列挙し、
+一人一枠・時間非重複の条件を満たすものだけを残して
+$\Phi$ を計算すれば、独立した比較基準を作れる。
+
+この資料の作成に際しては、添付ファイルから取り出した\code{solve()} と、
+独立に記述した全列挙評価を用いて、参加者1--4人・時間枠0--7件の
+乱数生成問題500例で評価ベクトルの一致を確認した。
+これは実装の補助的な検証であり、\emph{すべての入力に対する形式的証明の代替ではない}。
+
+\subsection{最低限確認したい境界事例}
+\begin{enumerate}
+\item 参加者ゼロ、または時間枠ゼロ（APIから直接呼ぶ場合）。
+\item すべての希望が0である場合。
+\item ちょうど接する区間 $[a,b)$ と $[b,c)$。
+\item 部分的に重なる区間 $[a,c)$ と $[b,d)$（$a<b<c<d$）。
+\item 希望が同じ参加者に集中した場合。
+\item 割当人数は同数で第1希望の件数だけが異なる場合。
+\item 上位3成分が一致し、開始順位和だけが異なる場合。
+\item 元の配列順と終了時刻順が一致しない場合。
+\item 複数日にまたがる時間枠と、空日付を持つ旧形式データ。
+\end{enumerate}
+
+\section{より一般的な視点とまとめ}
+本問題は、\emph{区間の両立性}という時間軸上の組合せ構造に、
+\emph{参加者は一度しか選べない}という集合的制約を組み合わせたものである。
+数理的には、希望のある参加者・時間枠の組を候補とし、
+時間競合と参加者重複を禁止した集合選択問題と見ることもできる。
+
+この構造に対し、終了時刻順の前処理で「時間的にどこまで戻れるか」を $p(j)$ に集約し、
+ビットマスク $M$ に「誰が既に使われたか」を集約している。
+その結果、過去の割当全履歴をDPの\emph{状態の判定}に用いる必要がなくなり、
+評価値の優越関係により多数の劣る候補を捨てられる。
+
+\begin{equation*}
+ \boxed{
+ \underbrace{\text{終了時刻順の区間DP}}_{\text{時間的両立性}}
+ \quad+\quad
+ \underbrace{\text{ビットマスク}}_{\text{参加者の一意性}}
+ \quad+\quad
+ \underbrace{\text{辞書式評価}}_{\text{運用上の優先順位}}
+ }
+\end{equation*}
+
+最も重要な設計上の論点は、アルゴリズムの選択以前に
+「何を優先し、何を絶対に許さないか」を明確に定式化することである。
+原実装の厳密性は、その定式化に対するものである。
+変更したい運用方針があるなら、まず制約式または目的関数の変更として記述し、
+その後に適したアルゴリズムを検討するのが望ましい。
+
+\appendix
+\section{記号一覧}
+\begin{longtable}{p{34mm}p{\dimexpr\linewidth-45mm\relax}}
+\toprule
+記号 & 意味 \\
+\midrule
+\endfirsthead
+\toprule 記号 & 意味 \\ \midrule
+\endhead
+$P,n$ & 参加者集合、参加者数 \\
+$I,\ell$ & 元の時間枠集合、時間枠数 \\
+$m$ & 希望のある時間枠数 \\
+$s_i,e_i$ & 時間枠 $i$ の開始・終了日時 \\
+$J_i$ & 時間枠 $i$ の半開区間 $[s_i,e_i)$ \\
+$w_{ip}$ & 時間枠 $i$ に対する参加者 $p$ の希望順位 \\
+$x_{ip}$ & 時間枠 $i$ を参加者 $p$ に割り当てる二値変数 \\
+$r_i$ & 開始日時順に付けた0始まり順位 \\
+$N,C_1,C_2$ & 割当人数、第1希望件数、第2希望件数 \\
+$R(x)$ & 採用した枠の開始順位和 \\
+$\Phi(x)$ & 辞書式評価ベクトル $(N,C_1,C_2,-R)$ \\
+$p(j)$ & 区間 $j$ の開始以前に終了する直前の区間番号 \\
+$M$ & 割当済み参加者の集合 \\
+$\bits(M)$ & 集合 $M$ のビットマスク整数 \\
+$F_j(M)$ & 最初の $j$ 区間でちょうど $M$ を割り当てる最良値 \\
+$\Delta(j,q)$ & 区間 $j$ を参加者 $q$ に割り当てる評価増分 \\
+\bottomrule
+\end{longtable}
+
+\section{読解する際のソースコード位置}
+{\small
+\begin{tabular}{@{}p{42mm}p{110mm}@{}}
+\toprule
+原ファイルの行範囲 & 内容 \\
+\midrule
+34--46 & \code{Solution} と結果型 \\
+49--65 & 日時解析 \code{\_bounds()} \\
+68--146 & 厳密最適化 \code{solve()} \\
+159--209 & 単一時間枠の編集ダイアログ \\
+212--283 & 一括時間枠生成ダイアログ \\
+286--436 & メイン画面の初期化・入力処理・一覧表示 \\
+438--562 & 参加者・時間枠操作とソルバ結果表示 \\
+564--670 & JSON保存・復元と終了処理 \\
+673--682 & アプリケーション起動 \\
+\bottomrule
+\end{tabular}
+}
+\end{document}
