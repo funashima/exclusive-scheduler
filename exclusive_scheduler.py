@@ -2,9 +2,9 @@
 """Offline, single-file PyQt6 scheduler for exclusive resource allocation.
 
 Participants express three ranked preferences over date-specific time
-slots. An exact interval-scheduling dynamic program assigns at most one
-non-overlapping requested slot per person, prioritizing coverage, first
-and second choices, then earlier times. Schedules are stored locally as
+slots. An exact allocation solver assigns at most one non-overlapping
+requested slot per person, prioritizing coverage, first and second
+choices, then earlier times. Schedules are stored locally as
 UTF-8 JSON; no server, database, or network access is required.
 
 The graphical interface is intentionally Japanese-language, while the
@@ -16,6 +16,7 @@ import json
 import sys
 from pathlib import Path
 from dataclasses import dataclass
+from collections import deque
 from datetime import datetime
 
 from PyQt6.QtCore import Qt, QDate, QTime
@@ -30,6 +31,8 @@ from PyQt6.QtWidgets import (
 
 
 # ----------------- Embedded exact assignment solver -----------------
+
+MAX_PEOPLE = 30
 
 @dataclass(frozen=True)
 class Solution:
@@ -65,6 +68,122 @@ def _bounds(date: str, slot: str) -> tuple[datetime, datetime]:
             datetime.fromisoformat(f"{day}T{b.strip()}:00"))
 
 
+
+def _solve_clique_groups(
+    n: int,
+    events: list[tuple[datetime, datetime, int, list[int]]],
+    order: dict[int, int],
+) -> Solution | None:
+    """Solve as minimum-cost bipartite matching when interval conflicts form cliques.
+
+    Disjoint time slots are the common special case (one slot per group).
+    A connected group of mutually overlapping intervals can contribute at
+    most one assignment. If overlapping intervals form a non-clique chain,
+    the reduction is invalid and this routine returns ``None`` so the
+    general exact dynamic program can handle it instead.
+    """
+    groups: list[list[tuple[datetime, datetime, int, list[int]]]] = []
+    for event in sorted(events, key=lambda e: (e[0], e[1], e[2])):
+        if not groups or event[0] >= max(e[1] for e in groups[-1]):
+            groups.append([event])
+        else:
+            groups[-1].append(event)
+    if any(max(e[0] for e in group) >= min(e[1] for e in group)
+           for group in groups):
+        return None
+
+    # Positional weights encode the solver's lexicographic objective exactly.
+    # At most n assignments can be selected, each with start rank < len(events).
+    rank_base = n * max(len(events), 1) + 1
+    second_weight = rank_base
+    first_weight = (n + 1) * second_weight
+    assigned_weight = (n + 1) * first_weight
+
+    source = 0
+    person_offset = 1
+    group_offset = person_offset + n
+    sink = group_offset + len(groups)
+    graph: list[list[list[int]]] = [[] for _ in range(sink + 1)]
+
+    def add_edge(u: int, v: int, capacity: int, cost: int) -> list[int]:
+        forward = [v, len(graph[v]), capacity, cost]
+        backward = [u, len(graph[u]), 0, -cost]
+        graph[u].append(forward)
+        graph[v].append(backward)
+        return forward
+
+    for person in range(n):
+        add_edge(source, person_offset + person, 1, 0)
+    for group_idx in range(len(groups)):
+        add_edge(group_offset + group_idx, sink, 1, 0)
+
+    # A person/group edge takes the best eligible time slot in that clique.
+    # Its corresponding original row is retained for the GUI/result output.
+    candidate_edges: list[tuple[int, int, list[int]]] = []
+    for group_idx, group in enumerate(groups):
+        for person in range(n):
+            best: tuple[int, int] | None = None
+            best_slot = -1
+            for _start, _end, slot_idx, prefs in group:
+                rank = prefs[person]
+                if not rank:
+                    continue
+                score = (assigned_weight + (first_weight if rank == 1 else 0)
+                         + (second_weight if rank == 2 else 0) - order[slot_idx])
+                if best is None or (score, -slot_idx) > best:
+                    best = (score, -slot_idx)
+                    best_slot = slot_idx
+            if best is not None:
+                edge = add_edge(person_offset + person, group_offset + group_idx,
+                                1, -best[0])
+                candidate_edges.append((best_slot, person, edge))
+
+    # Successive shortest augmenting paths find a minimum-cost maximum
+    # cardinality matching. SPFA is adequate for <=30 people and avoids
+    # any third-party optimization dependency.
+    while True:
+        distances: list[int | None] = [None] * len(graph)
+        distances[source] = 0
+        previous: list[tuple[int, int] | None] = [None] * len(graph)
+        in_queue = [False] * len(graph)
+        queue = deque([source])
+        in_queue[source] = True
+        while queue:
+            u = queue.popleft()
+            in_queue[u] = False
+            for edge_idx, edge in enumerate(graph[u]):
+                v, _reverse, capacity, cost = edge
+                if not capacity:
+                    continue
+                proposed = distances[u] + cost
+                if distances[v] is None or proposed < distances[v]:
+                    distances[v] = proposed
+                    previous[v] = (u, edge_idx)
+                    if not in_queue[v]:
+                        queue.append(v)
+                        in_queue[v] = True
+        if previous[sink] is None:
+            break
+        v = sink
+        while v != source:
+            u, edge_idx = previous[v]
+            edge = graph[u][edge_idx]
+            edge[2] -= 1
+            graph[v][edge[1]][2] += 1
+            v = u
+
+    choices = tuple(sorted((slot_idx, person) for slot_idx, person, edge
+                           in candidate_edges if edge[2] == 0))
+    assigned_people = {person for _slot_idx, person in choices}
+    preferences_by_slot = {slot_idx: prefs for _start, _end, slot_idx, prefs in events}
+    first = sum(preferences_by_slot[slot_idx][person] == 1
+                for slot_idx, person in choices)
+    second = sum(preferences_by_slot[slot_idx][person] == 2
+                 for slot_idx, person in choices)
+    return Solution(choices, tuple(p for p in range(n) if p not in assigned_people),
+                    (len(choices), first, second))
+
+
 def solve(people: list[str], dates: list[str], slots: list[str],
           wishes: list[list[int]]) -> Solution:
     """Compute an exact, non-overlapping assignment of preferred time slots.
@@ -73,8 +192,10 @@ def solve(people: list[str], dates: list[str], slots: list[str],
     one person, and distinct slots with overlapping time intervals cannot
     both be allocated. Unrequested slots are never eligible.
     
-    The dynamic program processes intervals by finishing time and uses a bit
-    mask to track assigned people. Candidate solutions are ordered
+    For disjoint slots or clique-shaped overlap groups, an exact weighted
+    bipartite matching algorithm is used. Other overlap patterns use the
+    original exact interval dynamic program with participant bitmasks.
+    Candidate solutions are ordered
     lexicographically by (1) number assigned, (2) number of first-choice
     assignments, (3) number of second-choice assignments, and (4) the
     negative sum of chronological start-order indices. Thus third choices
@@ -82,7 +203,7 @@ def solve(people: list[str], dates: list[str], slots: list[str],
     break ties across complete solutions rather than person by person.
     
     Args:
-        people: Participant names, in column order (at most 15).
+        people: Participant names, in column order (at most 30).
         dates: ISO date per row; must align with ``slots`` and ``wishes``.
         slots: Display time interval per row, such as ``09:00–10:00``.
         wishes: Preference matrix indexed ``[slot][person]`` with
@@ -97,12 +218,14 @@ def solve(people: list[str], dates: list[str], slots: list[str],
             preference values, dates, or intervals.
     
     Notes:
-        The state space grows exponentially with the number of people.
+        The general overlapping-interval case has an exponential state space;
+        the matching case is polynomial and handles typical nonoverlapping
+        meeting schedules efficiently.
         All comparisons use naive local datetimes; overnight intervals are
         not supported."""
     n = len(people)
-    if n > 15:
-        raise ValueError("厳密ソルバの対象は15人までです（計算量は人数に対して指数的です）。")
+    if n > MAX_PEOPLE:
+        raise ValueError(f"厳密ソルバの対象は{MAX_PEOPLE}人までです。")
     if not (len(dates) == len(slots) == len(wishes)):
         raise ValueError("枠データの長さが一致しません。")
     events = []
@@ -118,6 +241,9 @@ def solve(people: list[str], dates: list[str], slots: list[str],
     events.sort(key=lambda x: (x[1], x[0], x[2]))
     # Tie-breaking uses chronological start order, not finish order.
     order = {event[2]: idx for idx, event in enumerate(sorted(events, key=lambda x: (x[0], x[1], x[2])))}
+    matching_result = _solve_clique_groups(n, events, order)
+    if matching_result is not None:
+        return matching_result
     # dp[j] maps participant bitmasks to optimal solutions for events 1..j.
     # Score: (assigned, first choices, second choices, -sum(start ranks)).
     dp: list[dict[int, tuple[tuple[int, int, int, int], tuple[tuple[int, int], ...]]]] = [
@@ -444,6 +570,9 @@ class Scheduler(QMainWindow):
         if name in self.people:
             QMessageBox.warning(self, "重複", "同じ名前が存在します。")
             return
+        if len(self.people) >= MAX_PEOPLE:
+            QMessageBox.warning(self, "人数の上限", f"登録できる人数は{MAX_PEOPLE}人までです。")
+            return
         self.people.append(name)
         for row in self.wishes:
             row.append(0)
@@ -605,7 +734,8 @@ class Scheduler(QMainWindow):
             data = json.loads(Path(filename).read_text(encoding="utf-8"))
             people, slots, wishes = data["people"], data["slots"], data["wishes"]
             dates = data.get("dates", [""] * len(slots))
-            if (not isinstance(people, list) or not people or not all(isinstance(x, str) and x.strip() for x in people)
+            if (not isinstance(people, list) or not people or len(people) > MAX_PEOPLE
+                or not all(isinstance(x, str) and x.strip() for x in people)
                 or len(set(people)) != len(people) or not isinstance(slots, list)
                 or not all(isinstance(x, str) for x in slots) or not isinstance(wishes, list)
                 or not isinstance(dates, list) or len(dates) != len(slots)
